@@ -1,83 +1,59 @@
-from flask import Flask, render_template, request, redirect, url_for, flash
-from flaskext.mysql import MySQL
-import pymysql
- 
+import os
+
+from flask import Flask, request, render_template,redirect
+
+from flask_sqlalchemy import SQLAlchemy
+
 app = Flask(__name__)
-app.secret_key = "Cairocoders-Ednalan"
-  
-mysql = MySQL()
-   
-# MySQL configurations
-app.config['MYSQL_DATABASE_USER'] = 'root'
-app.config['MYSQL_DATABASE_PASSWORD'] = ''
-app.config['MYSQL_DATABASE_DB'] = 'testingdb'
-app.config['MYSQL_DATABASE_HOST'] = 'localhost'
-mysql.init_app(app)
- 
-@app.route('/')
-def Index():
-    conn = mysql.connect()
-    cur = conn.cursor(pymysql.cursors.DictCursor)
- 
-    cur.execute('SELECT * FROM employee')
-    data = cur.fetchall()
-  
-    cur.close()
-    return render_template('index.html', employee = data)
- 
-@app.route('/add_contact', methods=['POST'])
-def add_employee():
-    conn = mysql.connect()
-    cur = conn.cursor(pymysql.cursors.DictCursor)
-    if request.method == 'POST':
-        fullname = request.form['fullname']
-        phone = request.form['phone']
-        email = request.form['email']
-        cur.execute("INSERT INTO employee (name, email, phone) VALUES (%s,%s,%s)", (fullname, email, phone))
-        conn.commit()
-        flash('Employee Added successfully')
-        return redirect(url_for('Index'))
- 
-@app.route('/edit/<id>', methods = ['POST', 'GET'])
-def get_employee(id):
-    conn = mysql.connect()
-    cur = conn.cursor(pymysql.cursors.DictCursor)
-  
-    cur.execute('SELECT * FROM employee WHERE id = %s', (id))
-    data = cur.fetchall()
-    cur.close()
-    print(data[0])
-    return render_template('edit.html', employee = data[0])
- 
-@app.route('/update/<id>', methods=['POST'])
-def update_employee(id):
-    if request.method == 'POST':
-        fullname = request.form['fullname']
-        phone = request.form['phone']
-        email = request.form['email']
-        conn = mysql.connect()
-        cur = conn.cursor(pymysql.cursors.DictCursor)
-        cur.execute("""
-            UPDATE employee
-            SET name = %s,
-                email = %s,
-                phone = %s
-            WHERE id = %s
-        """, (fullname, email, phone, id))
-        flash('Employee Updated Successfully')
-        conn.commit()
-        return redirect(url_for('Index'))
- 
-@app.route('/delete/<string:id>', methods = ['POST','GET'])
-def delete_employee(id):
-    conn = mysql.connect()
-    cur = conn.cursor(pymysql.cursors.DictCursor)
-  
-    cur.execute('DELETE FROM employee WHERE id = {0}'.format(id))
-    conn.commit()
-    flash('Employee Removed Successfully')
-    return redirect(url_for('Index'))
+
+project_dir = os.path.dirname(os.path.abspath(__file__))
+database_file = "sqlite:///{}".format(os.path.join(project_dir, "bookdatabase.db"))
+app.config["SQLALCHEMY_DATABASE_URI"] = database_file
+
+db = SQLAlchemy(app)
+
+class Book(db.Model):
+    title = db.Column(db.String(80), unique=True, nullable=False, primary_key=True)
+
+    def __repr__(self):
+        return "<Title: {}>".format(self.title)
+
+@app.route('/', methods=["GET", "POST"])
+def home():
+    books = None
+    if request.form:
+        try:
+            book = Book(title=request.form.get("title"))
+            db.session.add(book)
+            db.session.commit()
+        except Exception as e:
+            print("Failed to add")
+            print(e)
+    books = Book.query.all()
+    return render_template("index.html", books=books)
+
+@app.route("/update", methods=["POST"])
+def update():
+    try:
+        newtitle = request.form.get("newtitle")
+        oldtitle = request.form.get("oldtitle")
+        book = Book.query.filter_by(title=oldtitle).first()
+        book.title = newtitle
+        db.session.commit()
+    except Exception as e:
+        print("Couldn't update name of the person")
+        print(e)
+    return redirect("/")
+
+@app.route("/delete", methods=["POST"])
+def delete():
+    title = request.form.get("title")
+    book = Book.query.filter_by(title=title).first()
+    db.session.delete(book)
+    db.session.commit()
+    return redirect("/")
+
 
 if __name__ == "__main__":
-    app.run(port=3000, debug=True)
-</string:id></id></id>
+    db.create_all()
+    app.run(debug=True, host='0.0.0.0')
